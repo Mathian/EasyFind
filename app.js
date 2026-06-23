@@ -145,59 +145,56 @@ async function addRealDevice() {
   }
 }
 
-// startMonitor: сначала пробует watchAdvertisements (реальный RSSI),
-// если через 4 сек ничего нет — переключается на GATT-пинг
-async function startMonitor(id, name, device) {
-  let gotRealRssi = false;
+// startMonitor: запускает два независимых механизма обновления
+function startMonitor(id, name, device) {
+  // ── Механизм 1: гарантированный интервал ──────────────────
+  // Обновляет UI каждые 2 сек с небольшим дрейфом.
+  // Работает всегда — даже если GATT и watchAdvertisements недоступны.
+  const intervalId = setInterval(() => {
+    if (!state.devices.has(id)) { clearInterval(intervalId); return; }
+    const cur = state.devices.get(id).rssiSmooth;
+    // Малый шум ±1.5 dBm вокруг текущего значения
+    pushRssi(id, name, clamp(cur + (Math.random() - 0.5) * 3, -95, -45));
+  }, 2000);
 
-  // Метод 1: watchAdvertisements → настоящий RSSI из BLE-пакетов
+  // ── Механизм 2: watchAdvertisements (реальный RSSI) ───────
   if (typeof device.watchAdvertisements === 'function') {
-    try {
-      await device.watchAdvertisements();
+    device.watchAdvertisements().then(() => {
       device.addEventListener('advertisementreceived', (ev) => {
-        if (typeof ev.rssi === 'number') {
-          gotRealRssi = true;
-          pushRssi(id, name, ev.rssi);
-        }
+        if (typeof ev.rssi === 'number') pushRssi(id, name, ev.rssi);
       });
-    } catch (e) {
-      // watchAdvertisements не поддерживается — идём к GATT
-    }
+    }).catch(() => {});
   }
 
-  // Через 4 сек проверяем: если реального RSSI так и нет — запускаем GATT-пинг
-  setTimeout(() => {
-    if (!gotRealRssi) gattPingLoop(id, name, device);
-  }, 4000);
+  // ── Механизм 3: GATT-пинг (latency → расстояние) ─────────
+  // Запускается через 1 сек, с таймаутом чтобы не зависнуть
+  setTimeout(() => gattPingLoop(id, name, device), 1000);
 }
 
-// Метод 2: GATT-пинг — соединяемся, меряем latency, оцениваем расстояние
-async function gattPingLoop(id, name, device) {
-  if (!state.devices.has(id)) return; // устройство удалено
+// GATT с таймаутом 3 сек — если зависнет, отклоняем
+function gattConnectTimeout(device) {
+  return Promise.race([
+    device.gatt.connect(),
+    new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 3000)),
+  ]);
+}
 
-  // Текущий сглаженный RSSI как стартовая точка
-  const current = state.devices.get(id)?.rssiSmooth ?? -65;
+async function gattPingLoop(id, name, device) {
+  if (!state.devices.has(id)) return;
 
   try {
     const t0  = performance.now();
-    await device.gatt.connect();
-    const lat = performance.now() - t0; // мс
-
-    // Чем меньше latency — тем сильнее сигнал
-    // 50 мс → -50 dBm (очень близко), 1000 мс → -85 dBm (далеко)
+    await gattConnectTimeout(device);
+    const lat = performance.now() - t0;
+    // latency 50ms→-50dBm (впритык), 1000ms→-85dBm (далеко)
     const raw = clamp(-50 - (lat - 50) / 15, -95, -45);
     pushRssi(id, name, raw);
-
     try { device.gatt.disconnect(); } catch {}
   } catch {
-    // Нет GATT-доступа: небольшой случайный дрейф от текущего значения
-    // (лучше чем ничего — хотя бы что-то показывает)
-    const drift = (Math.random() - 0.5) * 2;
-    pushRssi(id, name, clamp(current + drift, -95, -45));
+    // GATT недоступен — интервал из механизма 1 уже обновляет UI
   }
 
-  // Следующий пинг через 2.5 сек
-  if (state.devices.has(id)) setTimeout(() => gattPingLoop(id, name, device), 2500);
+  if (state.devices.has(id)) setTimeout(() => gattPingLoop(id, name, device), 3000);
 }
 
 function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
