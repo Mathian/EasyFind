@@ -123,6 +123,8 @@ html, body {
   cursor: pointer;
   transition: background .15s, transform .1s;
   box-shadow: 0 4px 20px var(--accent-glow);
+  position: relative;
+  z-index: 999;
 }
 .btn-primary:active { transform: scale(.97); background: #1d4ed8; }
 
@@ -199,17 +201,8 @@ html, body {
 .rc2 { width: 144px; height: 144px; margin: -72px 0 0 -72px; }
 .rc3 { width: 216px; height: 216px; margin: -108px 0 0 -108px; }
 
-.radar-sweep {
-  position: absolute;
-  width: 50%; height: 50%;
-  top: 0; left: 50%;
-  transform-origin: bottom left;
-  background: conic-gradient(from 0deg, transparent 60%, rgba(37,99,235,0.6) 100%);
-  animation: sweep 2.4s linear infinite;
-  border-radius: 0 100% 0 0;
-  pointer-events: none;
-}
-@keyframes sweep { to { transform: rotate(360deg); } }
+/* sweep убран — вместо него пульсирующие кольца */
+.radar-sweep { display: none; }
 
 .radar-center {
   position: absolute;
@@ -393,10 +386,13 @@ html, body {
 
 .detail-device-dot {
   position: absolute;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  box-shadow: 0 0 10px var(--accent-light);
   top: 20%; left: 50%;
   transform: translate(-50%, -50%);
-  transition: top .8s ease, left .8s ease;
-  animation: dot-pop .3s ease;
+  transition: top .8s ease, left .8s ease, background .4s, box-shadow .4s;
 }
 
 .detail-distance-badge {
@@ -538,6 +534,50 @@ html, body {
 .compat-row.good span:last-child { color: var(--good); font-weight: 600; }
 .compat-row.bad span:last-child { color: var(--danger); font-weight: 600; }
 .compat-row span:first-child { color: var(--muted); }
+
+/* ── Радарные кольца — пульс ── */
+.rc1 { animation: radar-pulse 2.4s ease-in-out infinite; }
+.rc2 { animation: radar-pulse 2.4s ease-in-out infinite .5s; }
+.rc3 { animation: radar-pulse 2.4s ease-in-out infinite 1s; }
+
+@keyframes radar-pulse {
+  0%, 100% { border-color: rgba(37,99,235,0.15); }
+  50%       { border-color: rgba(37,99,235,0.50); }
+}
+
+/* ── Точка на радаре — анимация по тренду ── */
+.rdot.trend-closer  { animation: dot-closer  .8s ease-in-out infinite alternate; }
+.rdot.trend-farther { animation: dot-farther .8s ease-in-out infinite alternate; }
+.rdot.trend-stable  { animation: none; }
+
+@keyframes dot-closer  { from { transform: translate(-50%,-50%) scale(1); } to { transform: translate(-50%,-50%) scale(1.5); box-shadow: 0 0 14px #22c55e; } }
+@keyframes dot-farther { from { transform: translate(-50%,-50%) scale(1); } to { transform: translate(-50%,-50%) scale(.7);  box-shadow: 0 0 4px #ef4444; } }
+
+/* ── Тренд в карточке ── */
+.dist-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.trend-arrow {
+  font-size: 11px;
+  font-weight: 700;
+}
+.trend-arrow.closer  { color: #22c55e; }
+.trend-arrow.farther { color: #ef4444; }
+.trend-arrow.stable  { color: var(--muted); }
+
+/* ── Тренд большой (detail screen) ── */
+.trend-label-big {
+  margin-top: 6px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.trend-label-big.closer  { color: #22c55e; }
+.trend-label-big.farther { color: #ef4444; }
+.trend-label-big.stable  { color: var(--muted); }
 
 /* ── Кнопка добавить реальное устройство ── */
 .btn-add-real {
